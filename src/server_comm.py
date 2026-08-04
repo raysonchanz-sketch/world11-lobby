@@ -30,11 +30,11 @@ class LobbyClient:
 
     def _request(self, path, method="GET", data=None):
         url = f"{self.server_url}{path}"
-        kwargs = {"timeout": 10}
+        req_kwargs = {}
         if data is not None:
-            kwargs["data"] = json.dumps(data).encode()
-            kwargs["headers"] = {"Content-Type": "application/json"}
-        req = urllib.request.Request(url, method=method, **kwargs)
+            req_kwargs["data"] = json.dumps(data).encode()
+            req_kwargs["headers"] = {"Content-Type": "application/json"}
+        req = urllib.request.Request(url, method=method, **req_kwargs)
         if self.is_ssl:
             resp = urllib.request.urlopen(req, context=_ssl_ctx, timeout=10)
         else:
