@@ -1,0 +1,13 @@
+Notes for this folder:
+
+all of these attacks are attacks in heavy_attack_combo after heavy attack version 1 if player chooses to heavy attack again animation will be switched to heavy attack version 2 , and finally if player decides to heavy attack after they have pressed twice then heavy attack version 3 will happen.
+
+Extra notes
+heavy attack version 1:
+frame 4 & 5 are reset frames before yoshi_attack_combo_reset_frame_left
+
+heavy attack version 2:
+frame 4 & 5 are reset frames before yoshi_attack_combo_reset_frame_left
+
+heavy attack version  3:
+frame 5 & 6 are reset frames before yoshi_attack_combo_reset_frame_left

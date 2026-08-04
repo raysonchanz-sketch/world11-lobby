@@ -1,0 +1,3 @@
+Notes:  
+
+yoshi_attack_combo_reset_frame_left is the reset frame ONLY after combos, if player does not attack again after 1 frame combo counter will be set to 0 the higher the combo counter the higher the knockback

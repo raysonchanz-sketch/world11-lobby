@@ -1,0 +1,4 @@
+# Lobby server uses only Python stdlib (http.server, json, threading)
+# No pip dependencies needed for development
+# For production deployment, optionally use:
+# gunicorn>=20.0.0

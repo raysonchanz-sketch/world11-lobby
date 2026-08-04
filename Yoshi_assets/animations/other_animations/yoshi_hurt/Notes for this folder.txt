@@ -1,0 +1,3 @@
+Notes for this folder
+
+The direction Yoshi plays this animation is decided by which direction Yoshi is facing.
