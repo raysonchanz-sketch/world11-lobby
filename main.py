@@ -700,9 +700,11 @@ def stage_select(screen, font):
         pygame.display.flip()
 
 
-def character_select(screen, font, ai_mode=None, ai_char=None):
+def character_select(screen, font, ai_mode=None, ai_char=None,
+                     lobby_client=None, is_online=False, is_host=True):
     import os
     import math
+    import threading
     from src.ui_sprites import (load_arrow_key, load_stage_frame, load_start_btn,
                                  load_fire_flower, load_mushroom)
     from src.controller import get_connected_controllers
@@ -789,11 +791,34 @@ def character_select(screen, font, ai_mode=None, ai_char=None):
     else:
         _mode_guard = InputModeGuard("controller" if _has_ctrl else "keyboard")
 
+    opp_char_name = None
+    lobby_poll_timer = 0.0
+    lobby_poll_interval = 1.0
+    last_sent_char = None
+
     fade(screen, _clock, "in")
 
     while True:
         dt = _clock.tick(60) / 1000.0
         anim_timer += dt
+
+        if is_online and lobby_client and lobby_client.room_id:
+            lobby_poll_timer += dt
+            my_char = characters[p1_index]["name"]
+            if my_char != last_sent_char:
+                last_sent_char = my_char
+                def _send_char(c=my_char):
+                    lobby_client.update_character(c, is_host=is_host)
+                threading.Thread(target=_send_char, daemon=True).start()
+            if lobby_poll_timer >= lobby_poll_interval:
+                lobby_poll_timer = 0.0
+                def _poll_room():
+                    nonlocal opp_char_name
+                    info = lobby_client.get_room()
+                    if info:
+                        field = "opp_character" if is_host else "character"
+                        opp_char_name = info.get(field, "") or None
+                threading.Thread(target=_poll_room, daemon=True).start()
 
         _menu_ctrl.refresh()
 
@@ -1027,6 +1052,21 @@ def character_select(screen, font, ai_mode=None, ai_char=None):
                 screen.blit(line1, line1.get_rect(center=(sw // 2, footer_y + 5)))
                 screen.blit(line2, line2.get_rect(center=(sw // 2, footer_y + 22)))
                 screen.blit(line3, line3.get_rect(center=(sw // 2, footer_y + 39)))
+
+        if is_online and opp_char_name:
+            opp_label = font_tiny.render(f"OPPONENT: {opp_char_name.upper()}", True, (100, 200, 255))
+            opp_bg = pygame.Surface((opp_label.get_width() + 16, 22), pygame.SRCALPHA)
+            pygame.draw.rect(opp_bg, (0, 0, 0, 140), opp_bg.get_rect(), border_radius=6)
+            screen.blit(opp_bg, (sw - opp_bg.get_width() - 15, 15))
+            screen.blit(opp_label, (sw - opp_label.get_width() - 7, 20))
+        elif is_online:
+            spinner_chars = ["|", "/", "-", "\\"]
+            spinner = spinner_chars[int(anim_timer * 4) % 4]
+            wait_label = font_tiny.render(f"{spinner} Waiting for opponent...", True, (160, 160, 180))
+            wait_bg = pygame.Surface((wait_label.get_width() + 16, 22), pygame.SRCALPHA)
+            pygame.draw.rect(wait_bg, (0, 0, 0, 140), wait_bg.get_rect(), border_radius=6)
+            screen.blit(wait_bg, (sw - wait_bg.get_width() - 15, 15))
+            screen.blit(wait_label, (sw - wait_label.get_width() - 7, 20))
 
         if _mode_guard:
             _mode_guard.draw(screen, font_title, font_normal)
@@ -2471,11 +2511,13 @@ def main():
             settings_screen(screen, font)
             continue
         if mode == "online":
-            role, session = online_lobby(screen, font)
+            role, session, lobby_cl = online_lobby(screen, font)
             if session is None:
                 continue
             while True:
-                char1, char2 = character_select(screen, font, ai_mode=False)
+                char1, char2 = character_select(screen, font, ai_mode=False,
+                                                lobby_client=lobby_cl, is_online=True,
+                                                is_host=(role == "host"))
                 if char1 is None:
                     session.close()
                     break
@@ -2778,7 +2820,7 @@ def online_lobby(screen, font):
     GREEN = (46, 138, 60)
     GRAY = (120, 120, 150)
 
-    LOBBY_URL = os.environ.get("WORLD11_LOBBY_URL", "http://localhost:8080")
+    LOBBY_URL = os.environ.get("WORLD11_LOBBY_URL", "https://world11-lobby.onrender.com")
 
     state = "connecting"
     sel = 0
@@ -2847,7 +2889,7 @@ def online_lobby(screen, font):
                         if lobby_client_ref[0]:
                             lobby_client_ref[0].close()
                         fade(screen, _clock, "out")
-                        return None, None
+                        return None, None, None
                     elif state == "create_name":
                         state = "browse"
                     elif state in ("host_waiting", "join_connecting"):
@@ -2929,7 +2971,7 @@ def online_lobby(screen, font):
         if state == "ready":
             fade(screen, _clock, "out")
             role = "host" if session.is_hosting else "join"
-            return role, session
+            return role, session, lobby_client_ref[0]
 
         if state == "connect_failed":
             if session:

@@ -85,13 +85,33 @@ class LobbyHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"rooms": room_list}).encode())
 
         elif self.path == "/health":
-            self._set_headers(200)
             with rooms_lock:
+                self._set_headers(200)
                 self.wfile.write(json.dumps({
                     "status": "ok",
                     "rooms": len(rooms),
                     "uptime": int(time.time() - server_start_time),
                 }).encode())
+
+        elif self.path.startswith("/rooms/") and self.path.count("/") == 2:
+            room_id = self.path.split("/")[2]
+            with rooms_lock:
+                if room_id in rooms:
+                    r = rooms[room_id]
+                    self._set_headers(200)
+                    self.wfile.write(json.dumps({
+                        "id": room_id,
+                        "name": r["name"],
+                        "host_name": r["host_name"],
+                        "character": r.get("character", ""),
+                        "opp_character": r.get("opp_character", ""),
+                        "stage": r.get("stage", ""),
+                        "players": r.get("players", 1),
+                        "state": r.get("state", "lobby"),
+                    }).encode())
+                else:
+                    self._set_headers(404)
+                    self.wfile.write(json.dumps({"error": "room not found"}).encode())
 
         else:
             self._set_headers(404)
@@ -129,10 +149,9 @@ class LobbyHandler(BaseHTTPRequestHandler):
                 if room_id in rooms:
                     rooms[room_id]["last_heartbeat"] = time.time()
                     data = self._read_body()
-                    if "players" in data:
-                        rooms[room_id]["players"] = data["players"]
-                    if "character" in data:
-                        rooms[room_id]["character"] = data["character"]
+                    for key in ("players", "character", "opp_character", "stage", "state"):
+                        if key in data:
+                            rooms[room_id][key] = data[key]
                     self._set_headers(200)
                     self.wfile.write(json.dumps({"ok": True}).encode())
                 else:
