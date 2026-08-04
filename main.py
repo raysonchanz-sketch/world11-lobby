@@ -880,8 +880,10 @@ def character_select(screen, font, ai_mode=None, ai_char=None,
                     elif event.key in (pygame.K_f, pygame.K_SPACE):
                         if not (is_online and opp_locked and characters[p1_index]["name"] == opp_char_name):
                             p1_locked = True
+                            if is_online:
+                                p2_locked = True
 
-                elif not ai_mode and not p2_locked:
+                elif not ai_mode and not is_online and not p2_locked:
                     if event.key in (pygame.K_LEFT,):
                         p2_index = find_next(p2_index, -1, 0)
                     elif event.key in (pygame.K_RIGHT,):
@@ -920,6 +922,8 @@ def character_select(screen, font, ai_mode=None, ai_char=None,
                 elif _menu_ctrl.confirm:
                     if not (is_online and opp_locked and characters[p1_index]["name"] == opp_char_name):
                         p1_locked = True
+                        if is_online:
+                            p2_locked = True
             elif ai_mode and p1_locked and not p2_locked:
                 if _menu_ctrl.left:
                     p2_index = find_next(p2_index, -1, 0)
@@ -931,7 +935,7 @@ def character_select(screen, font, ai_mode=None, ai_char=None,
                     p2_index = find_next(p2_index, 0, 1)
                 elif _menu_ctrl.confirm:
                     p2_locked = True
-            elif not ai_mode and not p2_locked:
+            elif not ai_mode and not is_online and not p2_locked:
                 if _menu_ctrl.left:
                     p2_index = find_next(p2_index, -1, 0)
                 elif _menu_ctrl.right:
@@ -959,6 +963,8 @@ def character_select(screen, font, ai_mode=None, ai_char=None,
 
         if ai_mode and p1_locked and not p2_locked:
             title_text = "SELECT CPU CHARACTER"
+        elif is_online:
+            title_text = "SELECT YOUR FIGHTER"
         else:
             title_text = "SELECT YOUR FIGHTER"
         outlined_text(screen, title_text, font_title, (sw // 2, 40), (255, 220, 80),
@@ -1034,7 +1040,7 @@ def character_select(screen, font, ai_mode=None, ai_char=None,
                     screen.blit(p1_bg, (cx + 5, badge_y))
                     p1_label = font_tiny.render("P1", True, (255, 255, 255))
                     screen.blit(p1_label, p1_label.get_rect(center=(cx + card_w // 2, badge_y + 9)))
-                if is_p2:
+                if is_p2 and not is_online:
                     if ai_mode:
                         label_text = "CPU"
                         label_color_bg = (60, 180, 60, 180)
@@ -1073,6 +1079,11 @@ def character_select(screen, font, ai_mode=None, ai_char=None,
                 screen.blit(line2, line2.get_rect(center=(sw // 2, footer_y + 30)))
             elif ai_mode:
                 line1 = font_small.render("P1: WASD to move  |  F to confirm", True, col)
+                line2 = font_small.render("ESC to go back", True, dim)
+                screen.blit(line1, line1.get_rect(center=(sw // 2, footer_y + 12)))
+                screen.blit(line2, line2.get_rect(center=(sw // 2, footer_y + 30)))
+            elif is_online:
+                line1 = font_small.render("WASD to move + F to confirm", True, col)
                 line2 = font_small.render("ESC to go back", True, dim)
                 screen.blit(line1, line1.get_rect(center=(sw // 2, footer_y + 12)))
                 screen.blit(line2, line2.get_rect(center=(sw // 2, footer_y + 30)))
@@ -2516,23 +2527,31 @@ def main():
                 if char1 is None:
                     session.close()
                     break
-                stage = stage_select(screen, font)
-                if stage is None:
-                    continue
-                session.send_character_select(char1)
-                opp_char = session.recv_character_select()
-                if opp_char is None:
-                    session.close()
-                    break
-                stages = ["world1-1", "factory"]
-                stage_idx = stages.index(stage) if stage in stages else 0
-                session.send_stage_select(stage_idx)
-                opp_stage_idx = session.recv_stage_select()
-                if opp_stage_idx is None or opp_stage_idx < 0:
-                    session.close()
-                    break
-                if role == "join":
-                    stage = stages[opp_stage_idx] if opp_stage_idx < len(stages) else stage
+                stage = None
+                if role == "host":
+                    stage = stage_select(screen, font)
+                    if stage is None:
+                        continue
+                    stages = ["world1-1", "factory"]
+                    stage_idx = stages.index(stage) if stage in stages else 0
+                    session.send_character_select(char1)
+                    session.send_stage_select(stage_idx)
+                    opp_char = session.recv_character_select()
+                    if opp_char is None:
+                        session.close()
+                        break
+                else:
+                    session.send_character_select(char1)
+                    opp_char = session.recv_character_select()
+                    if opp_char is None:
+                        session.close()
+                        break
+                    opp_stage_idx = session.recv_stage_select()
+                    if opp_stage_idx is None or opp_stage_idx < 0:
+                        session.close()
+                        break
+                    stages = ["world1-1", "factory"]
+                    stage = stages[opp_stage_idx] if opp_stage_idx < len(stages) else "world1-1"
                 result = _run_match(screen, clock, font, sprite_lookup, char1, opp_char,
                                     False, None, stage, network_session=session)
                 session.close()
@@ -3111,10 +3130,18 @@ def online_lobby(screen, font):
         pygame.display.flip()
 
 
+STAGE_DEFS = {
+    "world1-1": {"name": "World 1-1", "path": "assets/levels/world1-1.json", "tileset": "assets/tiles/tileset.png",
+                 "hazards": {"kamek": True, "bobombs": False, "grrrols": False, "pipe_spawns": False, "npcs": True}},
+    "factory": {"name": "Factory", "path": "assets/levels/factory.json", "tileset": "assets/tiles/factory_tileset.png",
+                "hazards": {"kamek": True, "bobombs": False, "grrrols": False, "pipe_spawns": False, "npcs": False}},
+}
+
 def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_difficulty, stage=None, controller_assignment=None, network_session=None):
     if stage is None:
-        stage = {"name": "World 1-1", "path": "assets/levels/world1-1.json", "tileset": "assets/tiles/tileset.png",
-                 "hazards": {"kamek": True, "bobombs": False, "grrrols": False, "pipe_spawns": False, "npcs": True}}
+        stage = STAGE_DEFS["world1-1"]
+    elif isinstance(stage, str):
+        stage = STAGE_DEFS.get(stage, STAGE_DEFS["world1-1"])
     tileset_surf = pygame.image.load(stage["tileset"]).convert()
     tilemap = Tilemap(stage["path"], tileset_surf)
     solid = tilemap.solid_rects()
