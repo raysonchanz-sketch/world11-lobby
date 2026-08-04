@@ -807,8 +807,8 @@ def character_select(screen, font, ai_mode=None, ai_char=None,
             my_char = characters[p1_index]["name"]
             if my_char != last_sent_char:
                 last_sent_char = my_char
-                def _send_char(c=my_char):
-                    lobby_client.update_character(c, is_host=is_host)
+                def _send_char(c=my_char, p=1 if is_host else 2):
+                    lobby_client.update_character(c, player=p)
                 threading.Thread(target=_send_char, daemon=True).start()
             if lobby_poll_timer >= lobby_poll_interval:
                 lobby_poll_timer = 0.0
@@ -816,8 +816,8 @@ def character_select(screen, font, ai_mode=None, ai_char=None,
                     nonlocal opp_char_name
                     info = lobby_client.get_room()
                     if info:
-                        field = "opp_character" if is_host else "character"
-                        opp_char_name = info.get(field, "") or None
+                        opp_field = "p2_character" if is_host else "p1_character"
+                        opp_char_name = info.get(opp_field, "") or None
                 threading.Thread(target=_poll_room, daemon=True).start()
 
         _menu_ctrl.refresh()

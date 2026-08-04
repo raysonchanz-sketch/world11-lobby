@@ -99,11 +99,11 @@ class LobbyClient:
         except Exception:
             return None
 
-    def update_character(self, character, is_host=True):
+    def update_character(self, character, player=1):
         if not self.room_id:
             return
         try:
-            field = "character" if is_host else "opp_character"
+            field = f"p{player}_character"
             self._request(f"/rooms/{self.room_id}/heartbeat",
                          method="POST", data={field: character})
         except Exception:
@@ -112,6 +112,7 @@ class LobbyClient:
     def join_room(self, room_id):
         try:
             result = self._request(f"/rooms/{room_id}/join", method="POST", data={})
+            self.room_id = room_id
             self.connected = True
             return result
         except Exception as e:
