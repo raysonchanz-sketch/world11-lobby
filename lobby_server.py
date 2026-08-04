@@ -107,6 +107,8 @@ class LobbyHandler(BaseHTTPRequestHandler):
                         "opp_character": r.get("opp_character", ""),
                         "p1_character": r.get("p1_character", ""),
                         "p2_character": r.get("p2_character", ""),
+                        "p1_locked": r.get("p1_locked", False),
+                        "p2_locked": r.get("p2_locked", False),
                         "stage": r.get("stage", ""),
                         "players": r.get("players", 1),
                         "state": r.get("state", "lobby"),
@@ -151,7 +153,7 @@ class LobbyHandler(BaseHTTPRequestHandler):
                 if room_id in rooms:
                     rooms[room_id]["last_heartbeat"] = time.time()
                     data = self._read_body()
-                    for key in ("players", "character", "opp_character", "p1_character", "p2_character", "stage", "state"):
+                    for key in ("players", "character", "opp_character", "p1_character", "p2_character", "p1_locked", "p2_locked", "stage", "state"):
                         if key in data:
                             rooms[room_id][key] = data[key]
                     self._set_headers(200)

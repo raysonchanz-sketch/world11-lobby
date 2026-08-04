@@ -131,12 +131,14 @@ class LobbyClient:
         if rid == self.room_id:
             self.room_id = None
 
-    def send_heartbeat(self, players=1, character=""):
+    def send_heartbeat(self, players=1, **extra):
         if not self.room_id:
             return
+        payload = {"players": players}
+        payload.update(extra)
         try:
             self._request(f"/rooms/{self.room_id}/heartbeat",
-                         method="POST", data={"players": players, "character": character})
+                         method="POST", data=payload)
         except Exception:
             pass
 

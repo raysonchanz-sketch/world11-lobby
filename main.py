@@ -792,9 +792,11 @@ def character_select(screen, font, ai_mode=None, ai_char=None,
         _mode_guard = InputModeGuard("controller" if _has_ctrl else "keyboard")
 
     opp_char_name = None
+    opp_locked = False
     lobby_poll_timer = 0.0
-    lobby_poll_interval = 1.0
-    last_sent_char = None
+    lobby_poll_interval = 0.5
+    last_sent_char = -1
+    _lock_sent = False
 
     fade(screen, _clock, "in")
 
@@ -805,19 +807,29 @@ def character_select(screen, font, ai_mode=None, ai_char=None,
         if is_online and lobby_client and lobby_client.room_id:
             lobby_poll_timer += dt
             my_char = characters[p1_index]["name"]
-            if my_char != last_sent_char:
-                last_sent_char = my_char
-                def _send_char(c=my_char, p=1 if is_host else 2):
-                    lobby_client.update_character(c, player=p)
-                threading.Thread(target=_send_char, daemon=True).start()
+            current_sel = p1_index
+            if current_sel != last_sent_char:
+                last_sent_char = current_sel
+                _c = my_char
+                _p = 1 if is_host else 2
+                try:
+                    lobby_client.update_character(_c, player=_p)
+                except Exception:
+                    pass
             if lobby_poll_timer >= lobby_poll_interval:
                 lobby_poll_timer = 0.0
                 def _poll_room():
-                    nonlocal opp_char_name
-                    info = lobby_client.get_room()
-                    if info:
-                        opp_field = "p2_character" if is_host else "p1_character"
-                        opp_char_name = info.get(opp_field, "") or None
+                    nonlocal opp_char_name, opp_locked
+                    try:
+                        info = lobby_client.get_room()
+                        if info:
+                            opp_field = "p2_character" if is_host else "p1_character"
+                            val = info.get(opp_field, "")
+                            opp_char_name = val if val else None
+                            lock_field = "p2_locked" if is_host else "p1_locked"
+                            opp_locked = bool(info.get(lock_field, False))
+                    except Exception:
+                        pass
                 threading.Thread(target=_poll_room, daemon=True).start()
 
         _menu_ctrl.refresh()
@@ -866,7 +878,8 @@ def character_select(screen, font, ai_mode=None, ai_char=None,
                     elif event.key in (pygame.K_s,):
                         p1_index = find_next(p1_index, 0, 1)
                     elif event.key in (pygame.K_f, pygame.K_SPACE):
-                        p1_locked = True
+                        if not (is_online and opp_locked and characters[p1_index]["name"] == opp_char_name):
+                            p1_locked = True
 
                 elif not ai_mode and not p2_locked:
                     if event.key in (pygame.K_LEFT,):
@@ -905,7 +918,8 @@ def character_select(screen, font, ai_mode=None, ai_char=None,
                 elif _menu_ctrl.down:
                     p1_index = find_next(p1_index, 0, 1)
                 elif _menu_ctrl.confirm:
-                    p1_locked = True
+                    if not (is_online and opp_locked and characters[p1_index]["name"] == opp_char_name):
+                        p1_locked = True
             elif ai_mode and p1_locked and not p2_locked:
                 if _menu_ctrl.left:
                     p2_index = find_next(p2_index, -1, 0)
@@ -930,6 +944,16 @@ def character_select(screen, font, ai_mode=None, ai_char=None,
                     p2_locked = True
 
         sw, sh = screen.get_size()
+
+        if is_online and lobby_client and lobby_client.room_id and p1_locked and not _lock_sent:
+            _lock_sent = True
+            try:
+                lobby_client.update_character(characters[p1_index]["name"], player=1 if is_host else 2)
+                lobby_client._request(f"/rooms/{lobby_client.room_id}/heartbeat",
+                                     method="POST",
+                                     data={f"p{'1' if is_host else '2'}_locked": True})
+            except Exception:
+                pass
 
         draw_gradient_bg(screen)
 
@@ -1022,6 +1046,13 @@ def character_select(screen, font, ai_mode=None, ai_char=None,
                     screen.blit(p2_bg, (cx + 5, badge_y))
                     p2_label = font_tiny.render(label_text, True, (255, 255, 255))
                     screen.blit(p2_label, p2_label.get_rect(center=(cx + card_w // 2, badge_y + 9)))
+
+                if is_online and opp_locked and opp_char_name and ch["name"] == opp_char_name and not is_p1:
+                    taken_overlay = pygame.Surface((card_w, card_h), pygame.SRCALPHA)
+                    pygame.draw.rect(taken_overlay, (0, 0, 0, 120), taken_overlay.get_rect(), border_radius=8)
+                    screen.blit(taken_overlay, (cx, cy))
+                    taken_label = font_tiny.render("OPPONENT", True, (255, 100, 100))
+                    screen.blit(taken_label, taken_label.get_rect(center=(cx + card_w // 2, cy + card_h // 2)))
 
         footer_y = grid_y + grid_h + 25
         if p1_locked and p2_locked:
@@ -2427,42 +2458,6 @@ def _show_disconnect_screen(screen, font, message="CONNECTION LOST"):
 
 def main():
     import os
-    import time
-    import subprocess
-
-    ds4_path = None
-    try:
-        from setup_controller import find_ds4windows
-        ds4_path = find_ds4windows()
-    except Exception:
-        pass
-
-    ds4_running = False
-    if ds4_path:
-        try:
-            result = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq DS4Windows.exe"],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-            )
-            ds4_running = "DS4Windows.exe" in result.stdout
-        except Exception:
-            pass
-
-        if not ds4_running:
-            exe = os.path.join(ds4_path, "DS4Windows.exe")
-            if os.path.exists(exe):
-                subprocess.Popen([exe], cwd=ds4_path,
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                 creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-                time.sleep(6)
-                try:
-                    result = subprocess.run(
-                        ["tasklist", "/FI", "IMAGENAME eq DS4Windows.exe"],
-                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-                    )
-                    ds4_running = "DS4Windows.exe" in result.stdout
-                except Exception:
-                    pass
 
     pygame.init()
     pygame.joystick.init()
