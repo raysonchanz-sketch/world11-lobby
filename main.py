@@ -2939,10 +2939,12 @@ def online_lobby(screen, font):
                         session = NetworkSession()
                         addr = session.host()
                         host_port = int(addr.split(":")[1]) if ":" in addr else DEFAULT_PORT
+                        host_ip = addr.split(":")[0] if ":" in addr else "127.0.0.1"
                         result = lc.create_room(
                             name=room_name_input,
                             host_port=host_port,
                             host_name="Host",
+                            host_ip=host_ip,
                         )
                         if result:
                             lobby_client_ref[0] = lc
