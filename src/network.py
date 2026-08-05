@@ -79,7 +79,7 @@ def recv_msg(sock):
 def compute_state_hash(frame, p1_state, p2_state):
     data = struct.pack("!I", frame)
     for p in (p1_state, p2_state):
-        data += struct.pack("!iiiiBBii",
+        data += struct.pack("!iiiiBBiii",
             int(p["x"]), int(p["y"]),
             int(p.get("vx", 0) * 100), int(p.get("vy", 0) * 100),
             int(p.get("percentage", 0)),
