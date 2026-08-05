@@ -3378,7 +3378,7 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                     respawn_x = (LEVEL_W // 2) - 50 if player == player1 else (LEVEL_W // 2) + 50
                     player.respawn(respawn_x, 200)
             elif not frozen and countdown_done and not game_over:
-                if online_mode:
+                if online_mode and player == player1:
                     p1_input = gamepad1 if gamepad1 else p1_mouse_input
                     net_proxy_p1.refresh()
                     net_proxy_p1.send_local_input(frame)
