@@ -155,6 +155,8 @@ class AIController:
         self._recent_aerial_attack = 0
         self._recovery_dir = 1
         self._edge_guard_toward = True
+        self._jump_hold_counter = 0
+        self._prev_intent = None
 
         self.level_w = None
         self.blast_margin = 350
@@ -473,11 +475,21 @@ class AIController:
     def _apply_intent(self, dx, dy, dist, facing_opp):
         intent = self.current_intent
 
+        # Track jump hold duration for short-hop detection
+        if intent != self._prev_intent:
+            self._jump_hold_counter = 0
+        self._prev_intent = intent
+        self._jump_hold_counter += 1
+
         self.held = {
             "left": False, "right": False, "jump": False,
             "attack": False, "attack_alt": False, "special": False,
             "shield": False, "crouch": False,
         }
+
+        # Short-hop intents: hold jump for exactly 1 frame then release
+        _short_hop_intents = {"aerial", "aerial_approach"}
+        _is_short_hop = intent in _short_hop_intents
 
         move_toward = dx > 0
         move_away = dx < 0
@@ -532,14 +544,16 @@ class AIController:
                 self.held["left"] = True
 
         elif intent == "aerial":
-            self.held["jump"] = True
+            if self._jump_hold_counter <= 1:
+                self.held["jump"] = True
             if self._rng.random() < self.cfg["fast_fall_chance"]:
                 self.held["crouch"] = True
             if self._rng.random() < self.cfg["aerial_chance"]:
                 self.held["attack"] = True
 
         elif intent == "aerial_approach":
-            self.held["jump"] = True
+            if self._jump_hold_counter <= 1:
+                self.held["jump"] = True
             if move_toward:
                 self.held["right"] = True
             else:

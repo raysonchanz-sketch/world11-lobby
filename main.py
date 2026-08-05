@@ -1433,6 +1433,9 @@ def tutorial_sandbox(screen, clock, font, sprite_lookup, char_name, use_controll
         else:
             p1_input = p1_mouse_input
 
+        # Per-player input source mapping for DI
+        player_inputs = {player: p1_input, dummy: keys}
+
         for p in (player, dummy):
             if p.hitlag > 0:
                 p.hitlag -= 1
@@ -1560,6 +1563,7 @@ def tutorial_sandbox(screen, clock, font, sprite_lookup, char_name, use_controll
                     hit_end = attacker.attack_hit_end
                     current_frame = attacker.attack_frames - attacker.attacking
                     in_active = hit_start <= current_frame <= hit_end
+                    move_id = "heavy"
                     if (attacker.combo_type == "heavy" and attacker.combo_version > 0):
                         _combo_tables = {"yoshi": YOSHI_HEAVY_COMBO, "mario": MARIO_HEAVY_COMBO, "luigi": LUIGI_HEAVY_COMBO, "donkey_kong": DK_HEAVY_COMBO}
                         table = _combo_tables.get(attacker.char)
@@ -1589,12 +1593,14 @@ def tutorial_sandbox(screen, clock, font, sprite_lookup, char_name, use_controll
                     base_kb = attacker.aerial_attack_stats[1]
                     kb_growth = attacker.aerial_attack_stats[2]
                     kb_type = attacker.aerial_attack_stats[7]
+                    move_id = attacker.aerial_attack_name
                 else:
                     hitbox = attacker.attack_hitbox()
                     hit_start = attacker.attack_hit_start
                     hit_end = attacker.attack_hit_end
                     current_frame = attacker.attack_frames - attacker.attacking
                     in_active = hit_start <= current_frame <= hit_end
+                    move_id = "attack"
                     if attacker.combo_type == "light" and attacker.combo_version > 0:
                         _combo_tables = {"yoshi": YOSHI_LIGHT_COMBO, "mario": MARIO_LIGHT_COMBO, "luigi": LUIGI_LIGHT_COMBO, "donkey_kong": DK_LIGHT_COMBO}
                         table = _combo_tables.get(attacker.char)
@@ -1619,13 +1625,23 @@ def tutorial_sandbox(screen, clock, font, sprite_lookup, char_name, use_controll
                         shield_hit = victim.take_shield_hit(damage, attacker.facing)
                         if shield_hit:
                             attacker.apply_shield_pushback_to_attacker(damage, victim.facing)
+                            attacker.record_stale(move_id)
                             attacker.hit_this_swing = True
                             attack_landed = True
                             shake.trigger(duration=8, intensity=int(2 + victim.percentage * 0.05))
                     else:
-                        di_y = get_di_y(keys, victim.ctrl)
+                        stale_mult = attacker.get_stale_multiplier(move_id)
+                        di_y = get_di_y(player_inputs[victim], victim.ctrl)
+
+                        kb_bonus = 1.0
+                        if attacker.just_rolled and attacker.heavy_attack:
+                            kb_bonus = attacker.roll_heavy_bonus
+
                         damage *= attacker.damage_mult
                         is_counter, ch_mult = check_counter_hit(attacker, victim)
+                        if is_counter:
+                            kb_bonus *= COUNTER_HIT_KB_MULT
+
                         c_mult = 1.0
                         if attacker.combo_type == "light" and attacker.combo_version > 0:
                             c_mult = {1: 0.35, 2: 0.55, 3: 0.75}.get(attacker.combo_version, 1.0)
@@ -1634,21 +1650,23 @@ def tutorial_sandbox(screen, clock, font, sprite_lookup, char_name, use_controll
                             knockback_growth=kb_growth,
                             base_knockback=base_kb,
                             attacker_facing=attacker.facing,
-                            kb_bonus=1.0 * ch_mult,
-                            knockback_type=kb_type,
+                            stale_mult=stale_mult,
                             di_y=di_y,
+                            kb_bonus=kb_bonus,
+                            knockback_type=kb_type,
                             attacker_percent=attacker.percentage,
                             combo_launch_mult=c_mult
                         )
                         if is_counter:
                             victim.hitstun += COUNTER_HIT_HITSTUN_BONUS
+                        attacker.record_stale(move_id)
                         attacker.hit_this_swing = True
                         attacker.update_combo(damage)
                         attacker.advance_combo()
                         attacker.combo_hitstun = victim.hitstun
                         attacker.check_finisher(victim)
-                        attacker_lag = attacker.attack_frames
-                        is_true = victim.is_true_combo(damage, attacker_lag, kb_growth, base_kb, 1.0 * ch_mult)
+                        attacker_lag = attacker.aerial_attack_stats[4] if attacker.aerial_attack_stats else attacker.attack_frames
+                        is_true = victim.is_true_combo(damage, attacker_lag, kb_growth, base_kb, kb_bonus)
                         if is_true and attacker.combo_counter > 1:
                             attacker.last_combo_hit = (attacker.combo_counter, attacker.combo_damage)
                         shake.trigger(duration=10, intensity=int(3 + victim.percentage * 0.08))
@@ -1670,10 +1688,11 @@ def tutorial_sandbox(screen, clock, font, sprite_lookup, char_name, use_controll
                             shake.trigger(duration=10, intensity=int(3 + victim.percentage * 0.05))
                             attack_landed = True
                     else:
-                        di_y = get_di_y(keys, victim.ctrl)
+                        di_y = get_di_y(player_inputs[victim], victim.ctrl)
                         is_counter, ch_mult = check_counter_hit(attacker, victim)
+                        stale_mult = attacker.get_stale_multiplier("fire_punch")
                         victim.take_damage(
-                            base_damage=FIRE_PUNCH_DAMAGE * attacker.damage_mult,
+                            base_damage=FIRE_PUNCH_DAMAGE * attacker.damage_mult * stale_mult,
                             knockback_growth=FIRE_PUNCH_KNOCKBACK_GROWTH,
                             base_knockback=FIRE_PUNCH_BASE_KNOCKBACK,
                             attacker_facing=attacker.facing,
@@ -1685,6 +1704,7 @@ def tutorial_sandbox(screen, clock, font, sprite_lookup, char_name, use_controll
                         if is_counter:
                             victim.hitstun += COUNTER_HIT_HITSTUN_BONUS
                         attacker.special_hit = True
+                        attacker.record_stale("fire_punch")
                         attacker.update_combo(FIRE_PUNCH_DAMAGE)
                         attacker.advance_combo()
                         attacker.combo_hitstun = victim.hitstun
@@ -1705,10 +1725,11 @@ def tutorial_sandbox(screen, clock, font, sprite_lookup, char_name, use_controll
                             shake.trigger(duration=12, intensity=int(4 + victim.percentage * 0.05))
                             attack_landed = True
                     else:
-                        di_y = get_di_y(keys, victim.ctrl)
+                        di_y = get_di_y(player_inputs[victim], victim.ctrl)
                         is_counter, ch_mult = check_counter_hit(attacker, victim)
+                        stale_mult = attacker.get_stale_multiplier("hammer_smash")
                         victim.take_damage(
-                            base_damage=HAMMER_SMASH_DAMAGE * attacker.damage_mult,
+                            base_damage=HAMMER_SMASH_DAMAGE * attacker.damage_mult * stale_mult,
                             knockback_growth=HAMMER_SMASH_KNOCKBACK_GROWTH,
                             base_knockback=HAMMER_SMASH_BASE_KNOCKBACK,
                             attacker_facing=attacker.facing,
@@ -1720,6 +1741,7 @@ def tutorial_sandbox(screen, clock, font, sprite_lookup, char_name, use_controll
                         if is_counter:
                             victim.hitstun += COUNTER_HIT_HITSTUN_BONUS
                         attacker.special_hit = True
+                        attacker.record_stale("hammer_smash")
                         attacker.update_combo(HAMMER_SMASH_DAMAGE)
                         attacker.advance_combo()
                         attacker.combo_hitstun = victim.hitstun
@@ -1740,10 +1762,11 @@ def tutorial_sandbox(screen, clock, font, sprite_lookup, char_name, use_controll
                             shake.trigger(duration=12, intensity=int(4 + victim.percentage * 0.05))
                             attack_landed = True
                     else:
-                        di_y = get_di_y(keys, victim.ctrl)
+                        di_y = get_di_y(player_inputs[victim], victim.ctrl)
                         is_counter, ch_mult = check_counter_hit(attacker, victim)
+                        stale_mult = attacker.get_stale_multiplier("head_drill")
                         victim.take_damage(
-                            base_damage=HEAD_DRILL_DAMAGE * attacker.damage_mult,
+                            base_damage=HEAD_DRILL_DAMAGE * attacker.damage_mult * stale_mult,
                             knockback_growth=HEAD_DRILL_KNOCKBACK_GROWTH,
                             base_knockback=HEAD_DRILL_BASE_KNOCKBACK,
                             attacker_facing=attacker.facing,
@@ -1755,6 +1778,7 @@ def tutorial_sandbox(screen, clock, font, sprite_lookup, char_name, use_controll
                         if is_counter:
                             victim.hitstun += COUNTER_HIT_HITSTUN_BONUS
                         attacker.special_hit = True
+                        attacker.record_stale("head_drill")
                         attacker.update_combo(HEAD_DRILL_DAMAGE)
                         attacker.advance_combo()
                         attacker.combo_hitstun = victim.hitstun
@@ -1775,9 +1799,10 @@ def tutorial_sandbox(screen, clock, font, sprite_lookup, char_name, use_controll
                             shake.trigger(duration=12, intensity=int(4 + victim.percentage * 0.05))
                             attack_landed = True
                     else:
-                        di_y = get_di_y(keys, victim.ctrl)
+                        di_y = get_di_y(player_inputs[victim], victim.ctrl)
+                        stale_mult = attacker.get_stale_multiplier("barrel_smash")
                         victim.take_damage(
-                            base_damage=BARREL_SMASH_DAMAGE * attacker.damage_mult,
+                            base_damage=BARREL_SMASH_DAMAGE * attacker.damage_mult * stale_mult,
                             knockback_growth=BARREL_SMASH_KNOCKBACK_GROWTH,
                             base_knockback=BARREL_SMASH_BASE_KNOCKBACK,
                             attacker_facing=attacker.facing,
@@ -1787,6 +1812,7 @@ def tutorial_sandbox(screen, clock, font, sprite_lookup, char_name, use_controll
                             attacker_percent=attacker.percentage
                         )
                         attacker.special_hit = True
+                        attacker.record_stale("barrel_smash")
                         attacker.update_combo(BARREL_SMASH_DAMAGE)
                         attacker.advance_combo()
                         attacker.combo_hitstun = victim.hitstun
@@ -1845,7 +1871,7 @@ def tutorial_sandbox(screen, clock, font, sprite_lookup, char_name, use_controll
                             attacker.egg_roll_hit_interval = 0
                             shake.trigger(duration=8, intensity=int(2 + victim.percentage * 0.05))
                     else:
-                        di_y = get_di_y(keys, victim.ctrl)
+                        di_y = get_di_y(player_inputs[victim], victim.ctrl)
                         victim.take_damage(
                             base_damage=EGG_ROLL_DAMAGE,
                             knockback_growth=EGG_ROLL_KNOCKBACK_GROWTH,
@@ -1867,7 +1893,7 @@ def tutorial_sandbox(screen, clock, font, sprite_lookup, char_name, use_controll
                 if dummy.shielding and dummy.shield_health > 0:
                     egg.active = False
                 else:
-                    di_y = get_di_y(keys, dummy.ctrl)
+                    di_y = get_di_y(player_inputs[dummy], dummy.ctrl)
                     dummy.take_damage(
                         base_damage=EGG_DAMAGE,
                         knockback_growth=EGG_KNOCKBACK_GROWTH,
@@ -3152,6 +3178,10 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
     bg = Background()
     hazards = stage.get("hazards", {})
 
+    if network_session:
+        import hashlib
+        random.seed(int(hashlib.md5(stage["name"].encode()).hexdigest()[:8], 16))
+
     LEVEL_W = tilemap.level_w or SCREEN_W
     LEVEL_H = tilemap.level_h or SCREEN_H
     camera = Camera(LEVEL_W, LEVEL_H)
@@ -3279,10 +3309,23 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
             frame_ref=frame_ref, controls=CTRL_P1
         )
         net_proxy_p2 = NetworkKeyProxy(
-            _dummy_keys if i_am_host else local_keys,
+            _dummy_keys,  # always dummy initially; refreshed per-frame in the game loop
             network_session, is_local_player=not i_am_host,
             frame_ref=frame_ref, controls=CTRL_P2
         )
+
+    # Build per-player input source mapping for DI (directional influence)
+    if online_mode:
+        if i_am_host:
+            p1_di_input = gamepad1 if gamepad1 else p1_mouse_input
+            p2_di_input = net_proxy_p2
+        else:
+            p1_di_input = net_proxy_p1
+            p2_di_input = gamepad2 if gamepad2 else keys
+    else:
+        p1_di_input = gamepad1 if gamepad1 else p1_mouse_input
+        p2_di_input = gamepad2 if gamepad2 else keys
+    player_inputs = {player1: p1_di_input, player2: p2_di_input}
 
     dt = 1.0 / FPS
 
@@ -3384,15 +3427,17 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                     player.respawn(respawn_x, 200)
             elif not frozen and countdown_done and not game_over:
                 if online_mode and player == player1:
-                    local_keys = gamepad1 if gamepad1 else p1_mouse_input
                     net_proxy_p1.refresh()
-                    net_proxy_p1.send_local_input(frame)
-                    network_session.send_keepalive()
                     net_proxy_p2.refresh()
+                    network_session.send_keepalive()
                     if i_am_host:
+                        local_keys = gamepad1 if gamepad1 else p1_mouse_input
+                        net_proxy_p1.send_local_input(frame)
                         player1.update(local_keys, solid, dt, platforms, level_w=LEVEL_W, level_h=LEVEL_H)
                         player2.update(net_proxy_p2, solid, dt, platforms, level_w=LEVEL_W, level_h=LEVEL_H)
                     else:
+                        local_keys = gamepad2 if gamepad2 else keys
+                        net_proxy_p2.send_local_input(frame)
                         player1.update(net_proxy_p1, solid, dt, platforms, level_w=LEVEL_W, level_h=LEVEL_H)
                         player2.update(local_keys, solid, dt, platforms, level_w=LEVEL_W, level_h=LEVEL_H)
                 elif ai_controller and player == player2:
@@ -3485,7 +3530,7 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                             particles.shield_hit(victim.rect.centerx, victim.rect.centery)
                     else:
                         stale_mult = attacker.get_stale_multiplier(move_id)
-                        di_y = get_di_y(keys, victim.ctrl)
+                        di_y = get_di_y(player_inputs[victim], victim.ctrl)
 
                         # Yoshi heavy-after-roll bonus
                         kb_bonus = 1.0
@@ -3528,7 +3573,7 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
 
                         # Finisher check
                         attacker.check_finisher(victim)
-                        attacker_lag = attacker.attack_frames
+                        attacker_lag = attacker.aerial_attack_stats[4] if attacker.aerial_attack_stats else attacker.attack_frames
                         is_true = victim.is_true_combo(damage, attacker_lag, kb_growth, base_kb, kb_bonus)
                         if is_true and attacker.combo_counter > 1:
                             attacker.last_combo_hit = (attacker.combo_counter, attacker.combo_damage)
@@ -3558,7 +3603,7 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                             shake.trigger(duration=10, intensity=int(3 + victim.percentage * 0.05))
                             attack_landed = True
                     else:
-                        di_y = get_di_y(keys, victim.ctrl)
+                        di_y = get_di_y(player_inputs[victim], victim.ctrl)
                         is_counter, ch_mult = check_counter_hit(attacker, victim)
                         victim.take_damage(
                             base_damage=FIRE_PUNCH_DAMAGE * attacker.damage_mult,
@@ -3604,10 +3649,11 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                             attack_landed = True
                     else:
                         # Normal hit
-                        di_y = get_di_y(keys, victim.ctrl)
+                        di_y = get_di_y(player_inputs[victim], victim.ctrl)
                         is_counter, ch_mult = check_counter_hit(attacker, victim)
+                        stale_mult = attacker.get_stale_multiplier("hammer_smash")
                         victim.take_damage(
-                            base_damage=HAMMER_SMASH_DAMAGE * attacker.damage_mult,
+                            base_damage=HAMMER_SMASH_DAMAGE * attacker.damage_mult * stale_mult,
                             knockback_growth=HAMMER_SMASH_KNOCKBACK_GROWTH,
                             base_knockback=HAMMER_SMASH_BASE_KNOCKBACK,
                             attacker_facing=attacker.facing,
@@ -3619,6 +3665,7 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                         if is_counter:
                             victim.hitstun += COUNTER_HIT_HITSTUN_BONUS
                         attacker.special_hit = True
+                        attacker.record_stale("hammer_smash")
                         attacker.update_combo(HAMMER_SMASH_DAMAGE)
                         attacker.advance_combo()
                         attacker.combo_hitstun = victim.hitstun
@@ -3647,14 +3694,15 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                             shake.trigger(duration=12, intensity=int(4 + victim.percentage * 0.05))
                             attack_landed = True
                     else:
-                        di_y = get_di_y(keys, victim.ctrl)
+                        di_y = get_di_y(player_inputs[victim], victim.ctrl)
                         is_counter, ch_mult = check_counter_hit(attacker, victim)
+                        stale_mult = attacker.get_stale_multiplier("head_drill")
                         victim.take_damage(
-                            base_damage=BARREL_SMASH_DAMAGE * attacker.damage_mult,
-                            knockback_growth=BARREL_SMASH_KNOCKBACK_GROWTH,
-                            base_knockback=BARREL_SMASH_BASE_KNOCKBACK,
+                            base_damage=HEAD_DRILL_DAMAGE * attacker.damage_mult * stale_mult,
+                            knockback_growth=HEAD_DRILL_KNOCKBACK_GROWTH,
+                            base_knockback=HEAD_DRILL_BASE_KNOCKBACK,
                             attacker_facing=attacker.facing,
-                            kb_bonus=BARREL_SMASH_KB_BONUS * ch_mult,
+                            kb_bonus=HEAD_DRILL_KB_BONUS * ch_mult,
                             knockback_type="straight",
                             di_y=di_y,
                             attacker_percent=attacker.percentage
@@ -3662,7 +3710,8 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                         if is_counter:
                             victim.hitstun += COUNTER_HIT_HITSTUN_BONUS
                         attacker.special_hit = True
-                        attacker.update_combo(BARREL_SMASH_DAMAGE)
+                        attacker.record_stale("head_drill")
+                        attacker.update_combo(HEAD_DRILL_DAMAGE)
                         attacker.advance_combo()
                         attacker.combo_hitstun = victim.hitstun
                         attacker.check_finisher(victim, special_name=attacker.special_name)
@@ -3687,9 +3736,10 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                             shake.trigger(duration=12, intensity=int(4 + victim.percentage * 0.05))
                             attack_landed = True
                     else:
-                        di_y = get_di_y(keys, victim.ctrl)
+                        di_y = get_di_y(player_inputs[victim], victim.ctrl)
+                        stale_mult = attacker.get_stale_multiplier("barrel_smash")
                         victim.take_damage(
-                            base_damage=BARREL_SMASH_DAMAGE * attacker.damage_mult,
+                            base_damage=BARREL_SMASH_DAMAGE * attacker.damage_mult * stale_mult,
                             knockback_growth=BARREL_SMASH_KNOCKBACK_GROWTH,
                             base_knockback=BARREL_SMASH_BASE_KNOCKBACK,
                             attacker_facing=attacker.facing,
@@ -3699,6 +3749,7 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                             attacker_percent=attacker.percentage
                         )
                         attacker.special_hit = True
+                        attacker.record_stale("barrel_smash")
                         attacker.update_combo(BARREL_SMASH_DAMAGE)
                         attacker.advance_combo()
                         attacker.combo_hitstun = victim.hitstun
@@ -3765,7 +3816,7 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                             particles.hit_spark(attacker.rect.centerx, attacker.rect.centery)
                             shake.trigger(duration=8, intensity=int(2 + victim.percentage * 0.05))
                     else:
-                        di_y = get_di_y(keys, victim.ctrl)
+                        di_y = get_di_y(player_inputs[victim], victim.ctrl)
                         victim.take_damage(
                             base_damage=EGG_ROLL_DAMAGE,
                             knockback_growth=EGG_ROLL_KNOCKBACK_GROWTH,
@@ -3803,7 +3854,7 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                                     break
                             else:
                                 # Normal hit
-                                di_y = get_di_y(keys, player.ctrl)
+                                di_y = get_di_y(player_inputs[player], player.ctrl)
                                 player.take_damage(
                                     base_damage=SHELL_DAMAGE,
                                     knockback_growth=SHELL_KNOCKBACK_GROWTH,
@@ -3844,7 +3895,7 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                                     shake.trigger(duration=8, intensity=int(2 + player.percentage * 0.05))
                                     break
                             else:
-                                di_y = get_di_y(keys, player.ctrl)
+                                di_y = get_di_y(player_inputs[player], player.ctrl)
                                 player.take_damage(
                                     base_damage=egg.damage,
                                     knockback_growth=egg.kb_growth,
@@ -3882,7 +3933,7 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                                     shake.trigger(duration=8, intensity=int(2 + player.percentage * 0.05))
                                     break
                             else:
-                                di_y = get_di_y(keys, player.ctrl)
+                                di_y = get_di_y(player_inputs[player], player.ctrl)
                                 player.take_damage(
                                     base_damage=proj.damage,
                                     knockback_growth=proj.kb_growth,
@@ -4020,7 +4071,7 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                                     knockback_type="normal"
                                 )
                                 push_dir = 1 if player.rect.centerx >= npc.rect.centerx else -1
-                                player.rect.x += push_dir * 20
+                                player.rect.x += push_dir * 40
                                 player.pos.x = float(player.rect.x)
                                 npc.facing *= -1
                                 npc.pos_x = float(npc.rect.x)
@@ -4035,7 +4086,7 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                                     knockback_type="normal"
                                 )
                                 push_dir = 1 if player.rect.centerx >= npc.rect.centerx else -1
-                                player.rect.x += push_dir * 20
+                                player.rect.x += push_dir * 40
                                 player.pos.x = float(player.rect.x)
                                 npc.facing *= -1
                                 npc.pos_x = float(npc.rect.x)
@@ -4052,7 +4103,7 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                                         knockback_type="normal"
                                     )
                                     push_dir = 1 if player.rect.centerx >= npc.rect.centerx else -1
-                                    player.rect.x += push_dir * 15
+                                    player.rect.x += push_dir * 40
                                     player.pos.x = float(player.rect.x)
                                     npc.facing *= -1
                                     npc.pos_x = float(npc.rect.x)
@@ -4083,7 +4134,7 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                                         knockback_type="normal"
                                     )
                                     push_dir = 1 if player.rect.centerx >= npc.rect.centerx else -1
-                                    player.rect.x += push_dir * 15
+                                    player.rect.x += push_dir * 40
                                     player.pos.x = float(player.rect.x)
                                     npc.facing *= -1
                                     npc.pos_x = float(npc.rect.x)

@@ -1513,15 +1513,15 @@ class Player(pygame.sprite.Sprite):
                                     "donkey_kong": (DK_LIGHT_COMBO, DK_HEAVY_COMBO)}
                     light_t, heavy_t = combo_tables.get(self.char, (None, None))
                     table = heavy_t if self.combo_type == "heavy" else light_t
-                    if table:
+                    if table and self.combo_version in table:
                         stats = table[self.combo_version]
-                    self.attack_damage    = stats[0]
-                    self.attack_base_kb   = stats[1]
-                    self.attack_kb_growth = stats[2]
-                    self.attack_frames    = stats[3]
-                    self.attack_hit_start = stats[4]
-                    self.attack_hit_end   = stats[5]
-                    self.attack_kb_type   = stats[6]
+                        self.attack_damage    = stats[0]
+                        self.attack_base_kb   = stats[1]
+                        self.attack_kb_growth = stats[2]
+                        self.attack_frames    = stats[3]
+                        self.attack_hit_start = stats[4]
+                        self.attack_hit_end   = stats[5]
+                        self.attack_kb_type   = stats[6]
                     self.pending_combo_version = 0
                     self.pending_combo_type = None
                 if not self.on_ground and self.aerial_attack_stats:
