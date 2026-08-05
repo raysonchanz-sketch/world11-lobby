@@ -3269,13 +3269,16 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
     if online_mode:
         from src.network import NetworkKeyProxy, STATE_SYNC_INTERVAL, compute_state_hash
         _dummy_keys = pygame.key.get_pressed()
+        i_am_host = network_session.is_hosting
+        local_keys = gamepad1 if gamepad1 else p1_mouse_input
         net_proxy_p1 = NetworkKeyProxy(
-            gamepad1 if gamepad1 else p1_mouse_input,
-            network_session, is_local_player=True,
+            local_keys if i_am_host else _dummy_keys,
+            network_session, is_local_player=i_am_host,
             frame_ref=frame_ref, controls=CTRL_P1
         )
         net_proxy_p2 = NetworkKeyProxy(
-            _dummy_keys, network_session, is_local_player=False,
+            _dummy_keys if i_am_host else local_keys,
+            network_session, is_local_player=not i_am_host,
             frame_ref=frame_ref, controls=CTRL_P2
         )
 
@@ -3379,13 +3382,17 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                     player.respawn(respawn_x, 200)
             elif not frozen and countdown_done and not game_over:
                 if online_mode and player == player1:
-                    p1_input = gamepad1 if gamepad1 else p1_mouse_input
+                    local_keys = gamepad1 if gamepad1 else p1_mouse_input
                     net_proxy_p1.refresh()
                     net_proxy_p1.send_local_input(frame)
                     network_session.send_keepalive()
-                    player1.update(p1_input, solid, dt, platforms, level_w=LEVEL_W, level_h=LEVEL_H)
                     net_proxy_p2.refresh()
-                    player2.update(net_proxy_p2, solid, dt, platforms, level_w=LEVEL_W, level_h=LEVEL_H)
+                    if i_am_host:
+                        player1.update(local_keys, solid, dt, platforms, level_w=LEVEL_W, level_h=LEVEL_H)
+                        player2.update(net_proxy_p2, solid, dt, platforms, level_w=LEVEL_W, level_h=LEVEL_H)
+                    else:
+                        player1.update(net_proxy_p1, solid, dt, platforms, level_w=LEVEL_W, level_h=LEVEL_H)
+                        player2.update(local_keys, solid, dt, platforms, level_w=LEVEL_W, level_h=LEVEL_H)
                 elif ai_controller and player == player2:
                     ai_controller.update(keys, frame)
                     ai_proxy = AIKeyProxy(keys, ai_controller, CTRL_P2)
