@@ -3326,19 +3326,6 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
             frame_ref=frame_ref, controls=CTRL_P2
         )
 
-    # Build per-player input source mapping for DI (directional influence)
-    if online_mode:
-        if i_am_host:
-            p1_di_input = gamepad1 if gamepad1 else p1_mouse_input
-            p2_di_input = net_proxy_p2
-        else:
-            p1_di_input = net_proxy_p1
-            p2_di_input = gamepad2 if gamepad2 else keys
-    else:
-        p1_di_input = gamepad1 if gamepad1 else p1_mouse_input
-        p2_di_input = gamepad2 if gamepad2 else keys
-    player_inputs = {player1: p1_di_input, player2: p2_di_input}
-
     dt = 1.0 / FPS
 
     while True:
@@ -3393,6 +3380,18 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                 gamepad2.refresh()
             else:
                 gamepad2 = None
+
+        # Per-player input source mapping for DI (rebuilt each frame)
+        if online_mode:
+            if i_am_host:
+                player_inputs = {player1: gamepad1 if gamepad1 else p1_mouse_input,
+                                 player2: net_proxy_p2}
+            else:
+                player_inputs = {player1: net_proxy_p1,
+                                 player2: gamepad2 if gamepad2 else keys}
+        else:
+            player_inputs = {player1: gamepad1 if gamepad1 else p1_mouse_input,
+                             player2: gamepad2 if gamepad2 else keys}
 
         # --- Hitlag freeze: decrement first, then check if frozen ---
         for player in (player1, player2):
