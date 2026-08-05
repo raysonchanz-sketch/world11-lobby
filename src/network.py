@@ -123,6 +123,9 @@ class NetworkSession:
         self._ping_sent_time = 0.0
         self._pong_received = False
 
+    def start_recv_thread(self):
+        self._start_recv_thread()
+
     @property
     def is_hosting(self):
         return self.is_host
@@ -148,7 +151,6 @@ class NetworkSession:
                 self.peer_addr = addr
                 self.connected = True
                 self._last_recv_time = time.time()
-                self._start_recv_thread()
                 return True
             except BlockingIOError:
                 time.sleep(0.1)
@@ -164,7 +166,6 @@ class NetworkSession:
             self.peer_addr = (host_ip, port)
             self.connected = True
             self._last_recv_time = time.time()
-            self._start_recv_thread()
             return True
         except (socket.timeout, ConnectionRefusedError, OSError):
             return False

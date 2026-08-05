@@ -2552,6 +2552,7 @@ def main():
                         break
                     stages = ["world1-1", "factory"]
                     stage = stages[opp_stage_idx] if opp_stage_idx < len(stages) else "world1-1"
+                session.start_recv_thread()
                 result = _run_match(screen, clock, font, sprite_lookup, char1, opp_char,
                                     False, None, stage, network_session=session)
                 session.close()
