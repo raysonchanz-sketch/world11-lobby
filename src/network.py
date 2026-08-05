@@ -14,7 +14,7 @@ from collections import OrderedDict
 
 PROTOCOL_VERSION = 1
 DEFAULT_PORT = 5150
-INPUT_DELAY = 4
+INPUT_DELAY = 2
 STATE_SYNC_INTERVAL = 300
 INPUT_BUFFER_SIZE = 120
 KEEPALIVE_INTERVAL = 2.0
@@ -79,7 +79,7 @@ def recv_msg(sock):
 def compute_state_hash(frame, p1_state, p2_state):
     data = struct.pack("!I", frame)
     for p in (p1_state, p2_state):
-        data += struct.pack("!iiiiBBIi",
+        data += struct.pack("!iiiiBBii",
             int(p["x"]), int(p["y"]),
             int(p.get("vx", 0) * 100), int(p.get("vy", 0) * 100),
             int(p.get("percentage", 0)),
