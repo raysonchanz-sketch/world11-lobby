@@ -2579,8 +2579,17 @@ def main():
                     stages = ["world1-1", "factory"]
                     stage = stages[opp_stage_idx] if opp_stage_idx < len(stages) else "world1-1"
                 session.start_recv_thread()
+                import random as _rand_sync
+                if role == "host":
+                    _shared_seed = _rand_sync.randint(0, 2**31 - 1)
+                    session.send_ready(_shared_seed)
+                else:
+                    _shared_seed = session.recv_ready(timeout=5.0)
+                    if _shared_seed is None:
+                        _shared_seed = 0
                 result = _run_match(screen, clock, font, sprite_lookup, char1, opp_char,
-                                    False, None, stage, network_session=session)
+                                    False, None, stage, network_session=session,
+                                    match_seed=_shared_seed)
                 session.close()
                 if result == "restart":
                     continue
@@ -3166,7 +3175,7 @@ STAGE_DEFS = {
                 "hazards": {"kamek": True, "bobombs": False, "grrrols": False, "pipe_spawns": False, "npcs": False}},
 }
 
-def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_difficulty, stage=None, controller_assignment=None, network_session=None):
+def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_difficulty, stage=None, controller_assignment=None, network_session=None, match_seed=None):
     if stage is None:
         stage = STAGE_DEFS["world1-1"]
     elif isinstance(stage, str):
@@ -3180,7 +3189,10 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
 
     if network_session:
         import hashlib
-        random.seed(int(hashlib.md5(stage["name"].encode()).hexdigest()[:8], 16))
+        if match_seed is not None:
+            random.seed(match_seed)
+        else:
+            random.seed(int(hashlib.md5(stage["name"].encode()).hexdigest()[:8], 16))
 
     LEVEL_W = tilemap.level_w or SCREEN_W
     LEVEL_H = tilemap.level_h or SCREEN_H
