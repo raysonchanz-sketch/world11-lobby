@@ -539,21 +539,21 @@ def mode_select(screen, font):
             ctrl_surf = font_small.render("No controller detected", True, (120, 120, 140))
             screen.blit(ctrl_surf, ctrl_surf.get_rect(center=(sw // 2, 525)))
 
-            pair_label = font_tiny.render("[B] Bluetooth Setup  |  [D] Install DS4Windows (PS4)", True, GOLD)
+            pair_label = font_tiny.render("[B] Bluetooth Setup  |  [G] Install DS4Windows (PS4)", True, GOLD)
             pair_rect = pair_label.get_rect(center=(sw // 2, 540))
             screen.blit(pair_label, pair_rect)
 
             keys_now = pygame.key.get_pressed()
             if not hasattr(mode_select, "_b_prev"):
                 mode_select._b_prev = False
-                mode_select._d_prev = False
+                mode_select._g_prev = False
             b_pressed = keys_now[pygame.K_b]
-            d_pressed = keys_now[pygame.K_d]
+            g_pressed = keys_now[pygame.K_g]
             if b_pressed and not mode_select._b_prev:
                 open_bluetooth_settings()
                 show_pair_instructions = True
                 pair_instr_timer = 10.0
-            if d_pressed and not mode_select._d_prev:
+            if g_pressed and not mode_select._g_prev:
                 try:
                     webbrowser.open("https://github.com/ds4windowsapp/DS4Windows/releases")
                 except Exception:
@@ -561,7 +561,7 @@ def mode_select(screen, font):
                 show_ds4_prompt = True
                 pair_instr_timer = 10.0
             mode_select._b_prev = b_pressed
-            mode_select._d_prev = d_pressed
+            mode_select._g_prev = g_pressed
 
         if show_pair_instructions and pair_instr_timer > 0:
             pair_instr_timer -= dt
@@ -3268,13 +3268,14 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
     lag_indicator_timer = 0.0
     if online_mode:
         from src.network import NetworkKeyProxy, STATE_SYNC_INTERVAL, compute_state_hash
+        _dummy_keys = pygame.key.get_pressed()
         net_proxy_p1 = NetworkKeyProxy(
             gamepad1 if gamepad1 else p1_mouse_input,
             network_session, is_local_player=True,
             frame_ref=frame_ref, controls=CTRL_P1
         )
         net_proxy_p2 = NetworkKeyProxy(
-            keys, network_session, is_local_player=False,
+            _dummy_keys, network_session, is_local_player=False,
             frame_ref=frame_ref, controls=CTRL_P2
         )
 
