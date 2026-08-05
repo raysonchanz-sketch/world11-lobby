@@ -3382,6 +3382,7 @@ def _run_match(screen, clock, font, sprite_lookup, char1, char2, ai_mode, ai_dif
                     p1_input = gamepad1 if gamepad1 else p1_mouse_input
                     net_proxy_p1.refresh()
                     net_proxy_p1.send_local_input(frame)
+                    network_session.send_keepalive()
                     player1.update(p1_input, solid, dt, platforms, level_w=LEVEL_W, level_h=LEVEL_H)
                     net_proxy_p2.refresh()
                     player2.update(net_proxy_p2, solid, dt, platforms, level_w=LEVEL_W, level_h=LEVEL_H)
